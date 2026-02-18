@@ -29,12 +29,20 @@ std::string lbmMixingSimulator<T>::getDefaultName(size_t id) {
 }
 
 template<typename T>
+void lbmMixingSimulator<T>::assertInitialized() {
+    if (species.size() == 0) {
+        throw std::runtime_error("Cannot conduct concentration simulation without species.");
+    }
+}
+
+template<typename T>
 void lbmMixingSimulator<T>::lbmInit (T dynViscosity, T density) {
 
+    assertInitialized();
     this->setOutputDir();
     initValueContainers();
     this->initNsConverter(dynViscosity, density);
-    initAdConverters(density);
+    initAdConverters();
     this->initNsConvergeTracker();
     initAdConvergenceTracker();
     this->setIsInitialized();
@@ -86,6 +94,17 @@ void lbmMixingSimulator<T>::prepareLattice () {
 }
 
 template<typename T>
+bool lbmMixingSimulator<T>::addSpecie(size_t id, const Specie<T>* specie) {
+    auto result = species.try_emplace(id, specie);   
+    return result.second;
+}
+
+template<typename T>
+bool lbmMixingSimulator<T>::removeSpecie(size_t id) {
+    return species.erase(id) > 0;
+}
+
+template<typename T>
 void lbmMixingSimulator<T>::setBoundaryValues (int iT) {
     lbmSimulator<T>::setBoundaryValues(iT);
 }
@@ -99,13 +118,9 @@ void lbmMixingSimulator<T>::setConcBoundaryValues (int iT) {
 
 template<typename T>
 void lbmMixingSimulator<T>::storeCfdResults (int iT) {
-    // Store the pressure and flow rate values at the module nodes
-    lbmSimulator<T>::storeCfdResults(iT);
-
     // Store the concentration values at the module nodes
     int input[1] = { };
     T output[10];
-    
     for (auto& [key, Opening] : this->cfdModule->getOpenings()) {
         // If the node is an outflow, write the concentration value
         if (this->getFlowDirection(key) < 0.0) {
@@ -129,30 +144,21 @@ void lbmMixingSimulator<T>::writeVTK (int iT) {
         print = true;
     #endif
 
-    olb::SuperVTMwriter2D<T> vtmWriter( this->name );
+    olb::SuperVTMwriter2D<T> vtmWriter( this->name + "-conc" );
     // Writes geometry to file system
     if (iT == 0) {
-        olb::SuperLatticeGeometry2D<T,DESCRIPTOR> writeGeometry (this->getLattice(), this->getGeometry());
+        olb::SuperLatticeGeometry2D<T,ADDESCRIPTOR> writeGeometry (getAdLattice(0), this->getGeometry());
         vtmWriter.write(writeGeometry);
         vtmWriter.createMasterFile();
         this->vtkFile = olb::singleton::directories().getVtkOutDir() + olb::createFileName( this->name ) + ".pvd";
     }
 
     if (iT % 1000 == 0) {
-        
-        olb::SuperLatticePhysVelocity2D<T,DESCRIPTOR> velocity(this->getLattice(), this->getConverter());
-        olb::SuperLatticePhysPressure2D<T,DESCRIPTOR> pressure(this->getLattice(), this->getConverter());
-        olb::SuperLatticeDensity2D<T,DESCRIPTOR> latDensity(this->getLattice());
-        vtmWriter.addFunctor(velocity);
-        vtmWriter.addFunctor(pressure);
-        vtmWriter.addFunctor(latDensity);
-
-        vtmWriter.write(iT);
-
         // write all concentrations
         for (auto& [speciesId, adLattice] : adLattices) {
             olb::SuperLatticeDensity2D<T,ADDESCRIPTOR> concentration( getAdLattice(speciesId) );
-            concentration.getName() = "concentration " + std::to_string(speciesId);
+            concentration.getName() = "specie" + std::to_string(speciesId);
+            vtmWriter.addFunctor(concentration);
             vtmWriter.write(concentration, iT);
         }
 
@@ -171,10 +177,9 @@ void lbmMixingSimulator<T>::writeVTK (int iT) {
     if (iT %1000 == 0) {
         #ifdef VERBOSE
             std::cout << "[writeVTK] " << this->name << " currently at timestep " << iT << std::endl;
-            std::cout << "[TODO] Not printing meanConcentration values" << std::endl;
-            for (auto& [key, Opening] : this->cfdModule->getOpenings()) {
-                // meanConcentrations.at(key).at(0)->print();
-            } 
+            // for (auto& [key, Opening] : this->cfdModule->getOpenings()) {
+            //     meanConcentrations.at(key).at(0)->print();
+            // } 
         #endif
     }
 
@@ -186,6 +191,12 @@ void lbmMixingSimulator<T>::writeVTK (int iT) {
         }
     }
 
+}
+
+template<typename T>
+T lbmMixingSimulator<T>::getAverageEnergy() {
+    T energy = this->getLattice().getStatistics().getAverageEnergy();
+    return energy;
 }
 
 template<typename T>
@@ -231,38 +242,35 @@ void lbmMixingSimulator<T>::solve() {
 
 template<typename T>
 void lbmMixingSimulator<T>::solveCFD(size_t maxIter) {
-    std::cout << "Solving the NS" << std::endl;
+    std::cout << "Starting Navier-Stokes simulation..." << std::endl;
 
     // Check if initialized and set boundary conditions
     this->checkInitialized();
     this->setBoundaryValues(this->getStep());
 
     // Main simulation loop
-    for (int iT = 0; iT < int(maxIter); ++iT){    
-        writeVTK(this->getStep());       
+    for (int iT = 0; iT < int(maxIter); ++iT){
+        lbmSimulator<T>::writeVTK(this->getStep());       
         this->getLattice().collideAndStream();
         this->getStep() += 1;
         // Check convergence
         if (this->getIsConverged()) { break; }
     }
-
-    std::cout << "Storing the NS results" << std::endl;
+    std::cout << "Finished Navier-Stokes simulation" << std::endl;
     lbmSimulator<T>::storeCfdResults(this->getStep());
 
-    std::cout << "Solving the AD" << std::endl;
     // Advection Diffusion Solver
-    std::cout << "Setting concentration BC" << std::endl;
     this->setConcBoundaryValues(this->getStep());
-    std::cout << "Starting AD solve loop" << std::endl;
+    executeCoupling();
+    std::cout << "Starting Advection-Diffusion simulation..." << std::endl;
     for (int iT = 0; iT < int(maxIter); ++iT) {
-        writeVTK(this->getStep());
+        writeVTK(iT);
         for (auto& [speciesId, adLattice] : adLattices) {
-            // this->getLattice().executeCoupling();
             adLattice->collideAndStream();
+            adConverges.at(0)->takeValue(adLattice->getStatistics().getAverageRho(),true);
         }
-        this->getStep() += 1;
     }
-    std::cout << "Finished AD solve loop" << std::endl;
+    std::cout << "Finished Advection-Diffusion simulation" << std::endl;
     storeCfdResults(this->getStep());
 }
 
@@ -316,7 +324,7 @@ void lbmMixingSimulator<T>::initValueContainers () {
 }
 
 template<typename T>
-void lbmMixingSimulator<T>::initAdConverters (T density) {
+void lbmMixingSimulator<T>::initAdConverters () {
     for (auto& [speciesId, specie] : species) {
         std::shared_ptr<const olb::AdeUnitConverterFromResolutionAndRelaxationTime<T,ADDESCRIPTOR>> tempAD = std::make_shared<const olb::AdeUnitConverterFromResolutionAndRelaxationTime<T,ADDESCRIPTOR>> (
             this->getResolution(),
@@ -324,7 +332,7 @@ void lbmMixingSimulator<T>::initAdConverters (T density) {
             this->getCharPhysLength(),
             this->getCharPhysVelocity(),
             specie->getDiffusivity(),
-            density
+            1.0
         );
         #ifdef VERBOSE
             tempAD->print();
@@ -416,13 +424,12 @@ void lbmMixingSimulator<T>::initConcentrationIntegralPlane(size_t adKey) {
 
 template<typename T>
 void lbmMixingSimulator<T>::prepareCoupling() {
-    
+    std::cout << "Preparing coupling between NS and AD..." << std::endl;
     std::vector<olb::SuperLattice<T,ADDESCRIPTOR>*> adLatticesVec;
     std::vector<T> velFactors;
     for (auto& [speciesId, adLattice] : adLattices) {
         adLatticesVec.emplace_back(adLattices[speciesId].get());
-        //velFactors.emplace_back(this->converter->getConversionFactorVelocity() / this->adConverters[speciesId]->getConversionFactorVelocity());
-        velFactors.emplace_back(1.0);
+        velFactors.emplace_back(this->getConverter().getConversionFactorVelocity() / this->adConverters[speciesId]->getConversionFactorVelocity());
     }
     olb::NavierStokesAdvectionDiffusionSingleCouplingGenerator2D<T,DESCRIPTOR> coupling(0, this->getConverter().getLatticeLength(this->cfdModule->getSize()[0]), 0, this->getConverter().getLatticeLength(this->cfdModule->getSize()[1]), velFactors);
     this->getLattice().addLatticeCoupling(coupling, adLatticesVec);
@@ -434,7 +441,6 @@ void lbmMixingSimulator<T>::setConcentration2D (int key) {
     // Set the boundary concentrations for inflows and outflows
     // If the boundary is an inflow
     if (this->getFlowDirection(key) > 0.0) {
-        std::cout << "Setting conc BC for inflow" << std::endl;
         for (auto& [speciesId, adLattice] : adLattices) {
             olb::setAdvectionDiffusionTemperatureBoundary<T,ADDESCRIPTOR>(*adLattice, this->getGeometry(), key+3);
             olb::AnalyticalConst2D<T,T> one( 1. );
@@ -445,19 +451,23 @@ void lbmMixingSimulator<T>::setConcentration2D (int key) {
     }
     // If the boundary is an outflow or there is no flow
     else if (this->getFlowDirection(key) <= 0.0) {
-        std::cout << "Setting conc BC for outflow" << std::endl;
         for (auto& [speciesId, adLattice] : adLattices) {
             olb::setRegularizedHeatFluxBoundary<T,ADDESCRIPTOR>(*adLattice, getAdConverter(speciesId).getLatticeRelaxationFrequency(), this->getGeometry(), key+3, &zeroFlux);
             setBC++;
         }
     }
-    std::cout << "Done setting Conc BC" << std::endl;
-    std::cout << "Set total of " << setBC << " concentration BCs" << std::endl;
 }
 
 template<typename T>
 void lbmMixingSimulator<T>::storeConcentrations(std::unordered_map<size_t, std::unordered_map<size_t, T>> concentrations_) {
-    this->concentrations = concentrations_;
+    assert(concentrations_.size() <= this->concentrations.size());
+    for (auto& [key, value] : concentrations_) {
+        auto it = this->concentrations.find(key);
+        if (it == this->concentrations.end()) {
+            throw std::logic_error("Cannot store concentration for node" + std::to_string(key) + ". Not a BC.");
+        }
+        it->second = value;
+    }
 }
 
 template<typename T>

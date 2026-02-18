@@ -87,6 +87,22 @@ public:
                 std::unordered_map<size_t, arch::Opening<T>> openings);
 
     /**
+     * @brief Create and add a specie to the simulation.
+     * @param[in] diffusivity Diffusion coefficient of the specie in the carrier medium in m^2/s.
+     * @param[in] satConc Saturation concentration of the specie in the carrier medium in g/m^3.
+     * @return Pointer to created specie.
+     */
+    [[maybe_unused]] virtual std::shared_ptr<Specie<T>> addSpecie(T diffusivity, T satConc) override;
+
+    /**
+     * @brief Remove specie from the simulator. If a mixture contains the specie, it is removed from the mixture as well.
+     * A mixture consisting of a single specie is removed from the simulation.
+     * @param[in] specie The specie to be removed.
+     * @throws std::logic_error if the specie is not present in the simulation.
+     */
+    virtual void removeSpecie(const std::shared_ptr<Specie<T>>& specie) override;
+
+    /**
      * @note Adding a BC is only possible for domains that have been constructed using a network.
      * @throws logic_error if adding a BC is not possible.
      */
@@ -115,6 +131,12 @@ public:
      * @brief Write the concentration field in .ppm image format for all cfdSimulators
      */
     void writeConcentrationPpm(const std::shared_ptr<Specie<T>>& specie, std::pair<T,T> bounds, int resolution=600);
+
+    /**
+     * @brief Get the average energy of the system.
+     * @return The average energy.
+     */
+    T getAverageEnergy();
 
     void simulate() override;
 };

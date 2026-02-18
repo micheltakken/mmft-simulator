@@ -36,6 +36,22 @@ void CfdMixing<T>::assertInitialized() const {
 }
 
 template<typename T>
+std::shared_ptr<Specie<T>> CfdMixing<T>::addSpecie(T diffusivity, T satConc) {
+    auto addedSpecie = ConcentrationSemantics<T>::addSpecie(diffusivity, satConc);
+    // Additionally specie must be added to simulator
+    if (!mixingSimulator->addSpecie(addedSpecie->getId(), addedSpecie.get())) {
+        throw std::logic_error("Specie could not be added to simulator.");
+    }
+    return addedSpecie;
+}
+
+template<typename T>
+void CfdMixing<T>::removeSpecie(const std::shared_ptr<Specie<T>>& specie) {
+    mixingSimulator->removeSpecie(specie->getId());
+    ConcentrationSemantics<T>::removeSpecie(specie->getId());
+}
+
+template<typename T>
 void CfdMixing<T>::addConcentrationBC(std::shared_ptr<arch::Node<T>> node, const std::shared_ptr<Specie<T>>& specie, T concentration) {
     // Check that the node is a dangling node with no BC yet
     if (this->getDanglingNodes().find(node) == this->getDanglingNodes().end()) {
@@ -111,6 +127,11 @@ template<typename T>
 void CfdMixing<T>::writeConcentrationPpm(const std::shared_ptr<Specie<T>>& specie, std::pair<T,T> bounds, int resolution) {
     // 0.98 and 1.02 factors are there to account for artifical black pixels that might show
     mixingSimulator->writeConcentrationPpm(specie->getId(), 0.98*bounds.first, 1.02*bounds.second, resolution);
+}
+
+template<typename T>
+T CfdMixing<T>::getAverageEnergy() {
+    return mixingSimulator->getAverageEnergy();
 }
 
 template<typename T>

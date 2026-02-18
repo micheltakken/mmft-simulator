@@ -43,17 +43,24 @@ TEST_F(CfdConcentration, Case1a) {
     testSimulation.setContinuousPhase(fluid0->getId());
 
     // species
-    auto s1 = testSimulation.addSpecie(1e-5, 1.0);
+    auto s1 = testSimulation.addSpecie(1e-6, 1.0);
 
     // Boundary conditions
-    testSimulation.addPressureBC(node1, 1e2);
-    testSimulation.addPressureBC(node2, 1e2);
-    testSimulation.addPressureBC(node3, 1e2);
+    testSimulation.addPressureBC(node1, 1.0);
+    testSimulation.addPressureBC(node2, 1.0);
+    testSimulation.addPressureBC(node3, 1.0);
     testSimulation.addPressureBC(node7, 0.0);
 
-    T conc = 1.0;
+    T conc = 0.2;
+    testSimulation.addConcentrationBC(node1, s1,  conc);
     testSimulation.addConcentrationBC(node2, s1,  conc);
+    testSimulation.addConcentrationBC(node3, s1,  0.0);
+
+    testSimulation.setMaxIter(1000);
     
     // Simulate
     testSimulation.simulate();
+
+    EXPECT_NEAR(testSimulation.getAverageEnergy(), 3.06894e-08, 1e-12);
+
 }

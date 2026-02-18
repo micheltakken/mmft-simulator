@@ -46,7 +46,7 @@ using BGKdynamics = olb::BGKdynamics<T,DESCRIPTOR>;
 using BounceBack = olb::BounceBack<T,DESCRIPTOR>;
 
 using ADDESCRIPTOR = olb::descriptors::D2Q5<olb::descriptors::VELOCITY>;
-using ADDynamics = olb::AdvectionDiffusionBGKdynamics<T,ADDESCRIPTOR>;
+using ADDynamics = olb::AdvectionDiffusionTRTdynamics<T,ADDESCRIPTOR>;
 using NoADDynamics = olb::NoDynamics<T,ADDESCRIPTOR>;
 
 private:
@@ -71,6 +71,8 @@ private:
 
     [[nodiscard]] std::string getDefaultName(size_t id);
 
+    void assertInitialized();
+
 protected:
 
     auto& getAdConverter(size_t key) {
@@ -83,7 +85,7 @@ protected:
 
     void initValueContainers() override;
 
-    void initAdConverters(T density);
+    void initAdConverters();
 
     void initAdConvergenceTracker();
 
@@ -159,6 +161,16 @@ protected:
     void prepareLattice() override;
 
     /**
+     * @brief Adds a specie after initialization of simulator.
+     */
+    bool addSpecie(size_t id, const Specie<T>* specie);
+
+    /**
+     * @brief Removes a specie after initialization of simulator.
+     */
+    bool removeSpecie(size_t id);
+
+    /**
      * @brief Set the pressure and flow rate boundary values on the lattice at the module nodes.
      * @param[in] iT Iteration step.
     */
@@ -208,6 +220,12 @@ protected:
      * @returns Boolean for module convergence.
     */
     bool hasAdConverged() const override;
+
+    /**
+     * @brief Returns the average energy of the system.
+     * @returns Average energy
+     */
+    T getAverageEnergy();
 
 public:
 
