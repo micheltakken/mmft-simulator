@@ -291,10 +291,10 @@ void lbmMixingSimulator<T>::nsSolve() {
 }
 
 template<typename T>
-void lbmMixingSimulator<T>::adSolve() {
+void lbmMixingSimulator<T>::adSolve(size_t maxIter) {
     // theta = 10
-    this->setBoundaryValues(this->getStep());
-    for (int iT = 0; iT < 10000; ++iT){
+    this->setConcBoundaryValues(this->getStep());
+    for (int iT = 0; iT < int(maxIter); ++iT){
         writeVTK(this->getStep());
         for (auto& [speciesId, adLattice] : adLattices) {
             adLattice->collideAndStream();
