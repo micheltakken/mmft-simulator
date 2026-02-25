@@ -9,7 +9,7 @@ using T = double;
 
 class HybridConcentration : public test::definitions::GlobalTest<T> {};
 
-/*
+
 TEST_F(HybridConcentration, Case1a_Instantaneous) {
     // define network
     auto network = arch::Network<T>::createNetwork();
@@ -61,7 +61,7 @@ TEST_F(HybridConcentration, Case1a_Instantaneous) {
     network->setPressurePump(c2->getId(), pressure);
 
     // define simulation
-    sim::HybridMixing<T> testSimulation(network);
+    sim::HybridConcentration<T> testSimulation(network);
 
     // fluids
     auto fluid0 = testSimulation.addFluid(1e-3, 1e3);
@@ -128,7 +128,7 @@ TEST_F(HybridConcentration, Case1a_Instantaneous) {
     testSimulation.getResults()->printMixtures();
 
 }
-*/
+
 
 TEST_F(HybridConcentration, Case1a_Diffusive) {
     // define network
@@ -181,7 +181,7 @@ TEST_F(HybridConcentration, Case1a_Diffusive) {
     network->setPressurePump(c2->getId(), pressure);
 
     // define simulation
-    sim::HybridMixing<T> testSimulation(network);
+    sim::HybridConcentration<T> testSimulation(network);
 
     // fluids
     auto fluid0 = testSimulation.addFluid(1e-3, 1e3);

@@ -1,19 +1,20 @@
-#include "HybridMixing.h"
+#include "HybridConcentration.h"
 
 namespace sim {
 
 template<typename T>
-HybridMixing<T>::HybridMixing(std::shared_ptr<arch::Network<T>> network) : HybridContinuous<T>(Platform::Concentration, network), ConcentrationSemantics<T>(dynamic_cast<Simulation<T>*>(this), this->getHash()) { }
+
+HybridConcentration<T>::HybridConcentration(std::shared_ptr<arch::Network<T>> network) : HybridContinuous<T>(Platform::Concentration, network), ConcentrationSemantics<T>(dynamic_cast<Simulation<T>*>(this), this->getHash()) { }
 
 template<typename T>
-void HybridMixing<T>::assertInitialized() const 
+void HybridConcentration<T>::assertInitialized() const 
 {
     HybridContinuous<T>::assertInitialized();
     ConcentrationSemantics<T>::assertInitialized();
 }
 
 template<typename T>
-std::shared_ptr<lbmSimulator<T>> HybridMixing<T>::addLbmSimulator(std::shared_ptr<arch::CfdModule<T>> const module, std::string name)
+std::shared_ptr<lbmSimulator<T>> HybridConcentration<T>::addLbmSimulator(std::shared_ptr<arch::CfdModule<T>> const module, std::string name)
 {
     size_t resolutionDefault = 20;      // Some reasonable value
 
@@ -21,7 +22,7 @@ std::shared_ptr<lbmSimulator<T>> HybridMixing<T>::addLbmSimulator(std::shared_pt
 }
 
 template<typename T>
-std::shared_ptr<lbmSimulator<T>> HybridMixing<T>::addLbmSimulator(std::shared_ptr<arch::CfdModule<T>> const module, size_t resolution, std::string name)
+std::shared_ptr<lbmSimulator<T>> HybridConcentration<T>::addLbmSimulator(std::shared_ptr<arch::CfdModule<T>> const module, size_t resolution, std::string name)
 {
     T epsilonDefault = 1e-1;                                        // Some reasonable value
     T tauDefault = 0.932;                                           // For quadratic accuracy
@@ -33,7 +34,7 @@ std::shared_ptr<lbmSimulator<T>> HybridMixing<T>::addLbmSimulator(std::shared_pt
 }
 
 template<typename T>
-std::shared_ptr<lbmSimulator<T>> HybridMixing<T>::addLbmSimulator(std::shared_ptr<arch::CfdModule<T>> const module, 
+std::shared_ptr<lbmSimulator<T>> HybridConcentration<T>::addLbmSimulator(std::shared_ptr<arch::CfdModule<T>> const module, 
     size_t resolution, T epsilon, T tau, T adTau, T charPhysLength, T charPhysVelocity, std::string name)
 {
     if (this->hasValidResistanceModel()) {
@@ -56,7 +57,7 @@ std::shared_ptr<lbmSimulator<T>> HybridMixing<T>::addLbmSimulator(std::shared_pt
 }
 
 template<typename T>
-void HybridMixing<T>::setInstantaneousMixingModel() {
+void HybridConcentration<T>::setInstantaneousMixingModel() {
     if (this->getCFDSimulators().size() > 0) {
         throw std::logic_error("Cannot change to instantaneous mixing model when CFD simulators are already added to the simulation.");
     }
@@ -64,7 +65,7 @@ void HybridMixing<T>::setInstantaneousMixingModel() {
 }
 
 template<typename T>
-void HybridMixing<T>::setDiffusiveMixingModel() {
+void HybridConcentration<T>::setDiffusiveMixingModel() {
     if (this->getCFDSimulators().size() > 0) {
         throw std::logic_error("Cannot change to diffusive mixing model when CFD simulators are already added to the simulation.");
     }
@@ -72,7 +73,7 @@ void HybridMixing<T>::setDiffusiveMixingModel() {
 }
 
 template<typename T>
-std::pair<T,T> HybridMixing<T>::getGlobalConcentrationBounds(size_t adKey) const {
+std::pair<T,T> HybridConcentration<T>::getGlobalConcentrationBounds(size_t adKey) const {
     T minP = std::numeric_limits<T>::max();
     T maxP = 0.0;
     for (auto& [key, simulator] : this->readCFDSimulators()) {
@@ -88,7 +89,7 @@ std::pair<T,T> HybridMixing<T>::getGlobalConcentrationBounds(size_t adKey) const
 }
 
 template<typename T>
-void HybridMixing<T>::writeConcentrationPpm(size_t adKey, std::pair<T,T> bounds, int resolution) const {
+void HybridConcentration<T>::writeConcentrationPpm(size_t adKey, std::pair<T,T> bounds, int resolution) const {
     for (auto& [key, simulator] : this->readCFDSimulators()) {
         // 0.98 and 1.02 factors are there to account for artifical black pixels that might show
         simulator->writeConcentrationPpm(adKey, 0.98*bounds.first, 1.02*bounds.second, resolution);
@@ -96,7 +97,7 @@ void HybridMixing<T>::writeConcentrationPpm(size_t adKey, std::pair<T,T> bounds,
 }
 
 template<typename T>
-void HybridMixing<T>::simulate() {
+void HybridConcentration<T>::simulate() {
     Simulation<T>::simulate();
     this->assertInitialized();              // perform initialization checks
     this->initialize();                     // initialize the simulation
@@ -142,15 +143,9 @@ void HybridMixing<T>::simulate() {
 
     // Obtain overal steady-state concentration results
     bool concentrationConverged = false;
-    int iterationCounter = 0;
     while (!concentrationConverged) {
         this->getMixingModel()->propagateSpecies(this->getNetwork().get(), this);
         concentrationConverged = conductADSimulation(this->getCFDSimulators());
-        concentrationConverged = false;
-        if (iterationCounter > 10) {
-            concentrationConverged = true;
-        }
-        iterationCounter++;
     }
 
     this->saveState();
@@ -158,7 +153,7 @@ void HybridMixing<T>::simulate() {
 }
 
 template<typename T>
-void HybridMixing<T>::saveState() {
+void HybridConcentration<T>::saveState() {
     std::unordered_map<int, T> savePressures;
     std::unordered_map<int, T> saveFlowRates;
     std::unordered_map<int, std::deque<MixturePosition<T>>> saveMixturePositions;
@@ -213,7 +208,7 @@ void HybridMixing<T>::saveState() {
 }
 
 template<typename T>
-void HybridMixing<T>::saveMixtures() {
+void HybridConcentration<T>::saveMixtures() {
     this->getSimulationResults()->setMixtures(this->getMixtures());   
 }
 

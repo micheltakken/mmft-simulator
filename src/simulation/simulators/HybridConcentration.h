@@ -1,5 +1,5 @@
 /**
- * @file HybridMixing.h
+ * @file HybridConcentration.h
  */
 
 #pragma once
@@ -36,11 +36,11 @@ class lbmMixingSimulator;
  * @brief Class that conducts an abstract mixing simulation
  */
 template<typename T>
-class HybridMixing : public HybridContinuous<T>, public ConcentrationSemantics<T> {
+class HybridConcentration : public HybridContinuous<T>, public ConcentrationSemantics<T> {
 private:
     void assertInitialized() const override;
 
-    /** TODO: HybridMixing */
+    /** TODO: HybridConcentration */
     // void initialize() override;
 
     void saveState() override;
@@ -51,7 +51,7 @@ public:
     /**
      * @brief Constructor of the hybrid mixing simulator object
      */
-    HybridMixing(std::shared_ptr<arch::Network<T>> network);
+    HybridConcentration(std::shared_ptr<arch::Network<T>> network);
 
     /**
      * @brief Create and add an LBM Simulator for a CFD Module to the Hybrid simulation
