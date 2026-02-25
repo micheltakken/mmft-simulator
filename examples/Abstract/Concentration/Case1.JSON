@@ -71,7 +71,7 @@
     ]
 },
 "simulation": {
-    "platform": "Mixing",
+    "platform": "Concentration",
     "type": "Abstract",
     "resistanceModel": "Rectangular",
     "mixingModel": "Instantaneous",
