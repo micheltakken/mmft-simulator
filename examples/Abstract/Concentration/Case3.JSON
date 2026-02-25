@@ -1,7 +1,7 @@
 {	
-"_comment": "Network4",
+"_comment": "Network2",
 "simulation": {
-    "platform": "Mixing",
+    "platform": "Concentration",
     "type": "Abstract",
     "resistanceModel": "Rectangular",
     "mixingModel": "Instantaneous",
@@ -31,11 +31,6 @@
             "channel":0,
             "type": "PumpFlowrate",
             "flowRate": 3e-11
-        },
-        {	
-            "channel":2,
-            "type": "PumpFlowrate",
-            "flowRate": 3e-11
         }
     ],
     "fixtures": [
@@ -46,11 +41,6 @@
                 {
                     "mixture": 0,
                     "channel": 1,
-                    "t0": 0.0
-                },
-                {
-                    "mixture": 0,
-                    "channel": 3,
                     "t0": 0.0
                 }
             ]
