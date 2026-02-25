@@ -1,5 +1,5 @@
 /**
- * @file HybridMixing.h
+ * @file HybridConcentration.h
  */
 
 #pragma once
@@ -33,24 +33,25 @@ template<typename T>
 class lbmMixingSimulator;
 
 /**
- * @brief Class that conducts a abstract mixing simulation
+ * @brief Class that conducts an abstract mixing simulation
  */
 template<typename T>
-class HybridMixing : public HybridContinuous<T>, public ConcentrationSemantics<T> {
+class HybridConcentration : public HybridContinuous<T>, public ConcentrationSemantics<T> {
 private:
     void assertInitialized() const override;
 
-    /** TODO: HybridMixing */
+    /** TODO: HybridConcentration */
     // void initialize() override;
 
-    /** TODO: HybridMixing */
-    // void saveState() override;
+    void saveState() override;
+
+    void saveMixtures();
 
 public:
     /**
      * @brief Constructor of the hybrid mixing simulator object
      */
-    HybridMixing(std::shared_ptr<arch::Network<T>> network);
+    HybridConcentration(std::shared_ptr<arch::Network<T>> network);
 
     /**
      * @brief Create and add an LBM Simulator for a CFD Module to the Hybrid simulation
@@ -87,6 +88,16 @@ public:
     [[maybe_unused]] std::shared_ptr<lbmSimulator<T>> addLbmSimulator(std::shared_ptr<arch::CfdModule<T>> const module, 
         size_t resolution, T epsilon, T tau, T adTau, T charPhysLength, T charPhysVelocity, std::string name="");                        
         
+    /**
+     * @brief Sets an instantaneous mixing model for the simulation.
+     */
+    void setInstantaneousMixingModel() override;
+
+    /**
+     * @brief Sets a diffusive mixing model for the simulation.
+     */
+    void setDiffusiveMixingModel() override;
+
     /**
      * @brief Get the global bounds of velocity magnitude values in the CFD simulators.
      * @return A tuple with the global bounds for velocity magnitude values <velMin, velMax>

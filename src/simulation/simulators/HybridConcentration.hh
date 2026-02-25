@@ -1,19 +1,20 @@
-#include "HybridMixing.h"
+#include "HybridConcentration.h"
 
 namespace sim {
 
 template<typename T>
-HybridMixing<T>::HybridMixing(std::shared_ptr<arch::Network<T>> network) : HybridContinuous<T>(Platform::Concentration, network), ConcentrationSemantics<T>(dynamic_cast<Simulation<T>*>(this), this->getHash()) { }
+
+HybridConcentration<T>::HybridConcentration(std::shared_ptr<arch::Network<T>> network) : HybridContinuous<T>(Platform::Concentration, network), ConcentrationSemantics<T>(dynamic_cast<Simulation<T>*>(this), this->getHash()) { }
 
 template<typename T>
-void HybridMixing<T>::assertInitialized() const 
+void HybridConcentration<T>::assertInitialized() const 
 {
     HybridContinuous<T>::assertInitialized();
     ConcentrationSemantics<T>::assertInitialized();
 }
 
 template<typename T>
-std::shared_ptr<lbmSimulator<T>> HybridMixing<T>::addLbmSimulator(std::shared_ptr<arch::CfdModule<T>> const module, std::string name)
+std::shared_ptr<lbmSimulator<T>> HybridConcentration<T>::addLbmSimulator(std::shared_ptr<arch::CfdModule<T>> const module, std::string name)
 {
     size_t resolutionDefault = 20;      // Some reasonable value
 
@@ -21,7 +22,7 @@ std::shared_ptr<lbmSimulator<T>> HybridMixing<T>::addLbmSimulator(std::shared_pt
 }
 
 template<typename T>
-std::shared_ptr<lbmSimulator<T>> HybridMixing<T>::addLbmSimulator(std::shared_ptr<arch::CfdModule<T>> const module, size_t resolution, std::string name)
+std::shared_ptr<lbmSimulator<T>> HybridConcentration<T>::addLbmSimulator(std::shared_ptr<arch::CfdModule<T>> const module, size_t resolution, std::string name)
 {
     T epsilonDefault = 1e-1;                                        // Some reasonable value
     T tauDefault = 0.932;                                           // For quadratic accuracy
@@ -33,7 +34,7 @@ std::shared_ptr<lbmSimulator<T>> HybridMixing<T>::addLbmSimulator(std::shared_pt
 }
 
 template<typename T>
-std::shared_ptr<lbmSimulator<T>> HybridMixing<T>::addLbmSimulator(std::shared_ptr<arch::CfdModule<T>> const module, 
+std::shared_ptr<lbmSimulator<T>> HybridConcentration<T>::addLbmSimulator(std::shared_ptr<arch::CfdModule<T>> const module, 
     size_t resolution, T epsilon, T tau, T adTau, T charPhysLength, T charPhysVelocity, std::string name)
 {
     if (this->hasValidResistanceModel()) {
@@ -44,7 +45,7 @@ std::shared_ptr<lbmSimulator<T>> HybridMixing<T>::addLbmSimulator(std::shared_pt
         // add Simulator
         const auto& [it, inserted] = this->getCFDSimulators().try_emplace(id, addCfdSimulator);
         if (inserted) {
-            addCfdSimulator->initialize(this->getResistanceModel());
+            addCfdSimulator->initialize(this->getResistanceModel(), this->getMixingModel());
         } else {
             throw std::logic_error("Could not emplace new lbmSimulator.");
         }
@@ -56,7 +57,23 @@ std::shared_ptr<lbmSimulator<T>> HybridMixing<T>::addLbmSimulator(std::shared_pt
 }
 
 template<typename T>
-std::pair<T,T> HybridMixing<T>::getGlobalConcentrationBounds(size_t adKey) const {
+void HybridConcentration<T>::setInstantaneousMixingModel() {
+    if (this->getCFDSimulators().size() > 0) {
+        throw std::logic_error("Cannot change to instantaneous mixing model when CFD simulators are already added to the simulation.");
+    }
+    ConcentrationSemantics<T>::setInstantaneousMixingModel();
+}
+
+template<typename T>
+void HybridConcentration<T>::setDiffusiveMixingModel() {
+    if (this->getCFDSimulators().size() > 0) {
+        throw std::logic_error("Cannot change to diffusive mixing model when CFD simulators are already added to the simulation.");
+    }
+    ConcentrationSemantics<T>::setDiffusiveMixingModel();
+}
+
+template<typename T>
+std::pair<T,T> HybridConcentration<T>::getGlobalConcentrationBounds(size_t adKey) const {
     T minP = std::numeric_limits<T>::max();
     T maxP = 0.0;
     for (auto& [key, simulator] : this->readCFDSimulators()) {
@@ -72,7 +89,7 @@ std::pair<T,T> HybridMixing<T>::getGlobalConcentrationBounds(size_t adKey) const
 }
 
 template<typename T>
-void HybridMixing<T>::writeConcentrationPpm(size_t adKey, std::pair<T,T> bounds, int resolution) const {
+void HybridConcentration<T>::writeConcentrationPpm(size_t adKey, std::pair<T,T> bounds, int resolution) const {
     for (auto& [key, simulator] : this->readCFDSimulators()) {
         // 0.98 and 1.02 factors are there to account for artifical black pixels that might show
         simulator->writeConcentrationPpm(adKey, 0.98*bounds.first, 1.02*bounds.second, resolution);
@@ -80,7 +97,7 @@ void HybridMixing<T>::writeConcentrationPpm(size_t adKey, std::pair<T,T> bounds,
 }
 
 template<typename T>
-void HybridMixing<T>::simulate() {
+void HybridConcentration<T>::simulate() {
     Simulation<T>::simulate();
     this->assertInitialized();              // perform initialization checks
     this->initialize();                     // initialize the simulation
@@ -126,16 +143,73 @@ void HybridMixing<T>::simulate() {
 
     // Obtain overal steady-state concentration results
     bool concentrationConverged = false;
-    int iterationCounter = 0;
     while (!concentrationConverged) {
         this->getMixingModel()->propagateSpecies(this->getNetwork().get(), this);
         concentrationConverged = conductADSimulation(this->getCFDSimulators());
-        concentrationConverged = false;
-        if (iterationCounter > 10) {
-            concentrationConverged = true;
-        }
-        iterationCounter++;
     }
+
+    this->saveState();
+    this->saveMixtures();
+}
+
+template<typename T>
+void HybridConcentration<T>::saveState() {
+    std::unordered_map<int, T> savePressures;
+    std::unordered_map<int, T> saveFlowRates;
+    std::unordered_map<int, std::deque<MixturePosition<T>>> saveMixturePositions;
+    std::unordered_map<int, std::string> vtkFiles;
+
+    // pressures
+    for (auto& [id, node] : this->getNetwork()->getNodes()) {
+        savePressures.try_emplace(node->getId(), node->getPressure());
+    }
+
+    // flow rates
+    for (auto& [id, channel] : this->getNetwork()->getChannels()) {
+        saveFlowRates.try_emplace(channel->getId(), channel->getFlowRate());
+    }
+    for (auto& [id, pump] : this->getNetwork()->getFlowRatePumps()) {
+        saveFlowRates.try_emplace(pump->getId(), pump->getFlowRate());
+    }
+    for (auto& [id, pump] : this->getNetwork()->getPressurePumps()) {
+        saveFlowRates.try_emplace(pump->getId(), pump->getFlowRate());
+    }
+
+    // Add a mixture position for all filled edges
+    for (auto& [channelId, mixingId] : this->getMixingModel()->getFilledEdges()) {
+        std::deque<MixturePosition<T>> newDeque;
+        MixturePosition<T> newMixturePosition(mixingId, channelId, 0.0, 1.0);
+        newDeque.push_front(newMixturePosition);
+        saveMixturePositions.try_emplace(channelId, newDeque);
+    }
+    // Add all mixture positions
+    for (auto& [channelId, deque] : this->getMixingModel()->getMixturesInEdges()) {
+        for (auto& pair : deque) {
+            if (!saveMixturePositions.count(channelId)) {
+                std::deque<MixturePosition<T>> newDeque;
+                MixturePosition<T> newMixturePosition(pair.first, channelId, 0.0, deque.front().second);
+                newDeque.push_front(newMixturePosition);
+                saveMixturePositions.try_emplace(channelId, newDeque);
+            } else {
+                MixturePosition<T> newMixturePosition(pair.first, channelId, 0.0, pair.second);
+                saveMixturePositions.at(channelId).front().position1 = pair.second;
+                saveMixturePositions.at(channelId).push_front(newMixturePosition);
+            }
+        }
+    }
+
+    // vtk Files
+    for (auto& [id, simulator] : this->readCFDSimulators()) {
+        vtkFiles.try_emplace(simulator->getId(), simulator->getVtkFile());
+    }
+
+    // state
+    this->getSimulationResults()->addState(this->getTime(), savePressures, saveFlowRates, saveMixturePositions, vtkFiles);
+}
+
+template<typename T>
+void HybridConcentration<T>::saveMixtures() {
+    this->getSimulationResults()->setMixtures(this->getMixtures());   
 }
 
 }   // namespace sim

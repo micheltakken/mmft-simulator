@@ -11,7 +11,7 @@
 #include "abstract/Membrane.test.cpp"
 #include "abstract/Topology.test.cpp"
 
-// #include "hybrid/Concentration.test.cpp"
+#include "hybrid/Concentration.test.cpp"
 #include "hybrid/Continuous.test.cpp"
 #include "hybrid/Opening.test.cpp"
 

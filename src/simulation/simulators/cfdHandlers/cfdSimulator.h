@@ -44,9 +44,16 @@ class NodalAnalysis;
 namespace sim {
 
 template<typename T>
-class InstantaneousMixingModel;
+class MixingModel;
+
 template<typename T>
-class HybridMixing;
+class InstantaneousMixingModel;
+
+template<typename T>
+class DiffusionMixingModel;
+
+template<typename T>
+class HybridConcentration;
 
 /**
  * @brief Class to specify a module, which is a functional component in a network.
@@ -106,6 +113,11 @@ protected:
     };
 
     void initialize(const ResistanceModel<T>* resistanceModel);
+
+    virtual void initialize(const ResistanceModel<T>* resistanceModel, const MixingModel<T>* mixingModel) 
+    {
+        throw std::runtime_error("The simulator does not support mixing model initialization.");
+    }
 
     /**
      * @brief Initialize an instance of the LBM solver for this simulator.
@@ -168,10 +180,27 @@ protected:
      * @brief Get the concentrations at the boundary nodes.
      * @returns Concentrations
      */
-    virtual std::unordered_map<size_t, std::unordered_map<size_t, T>> getConcentrations() const 
+    virtual const std::unordered_map<size_t, std::unordered_map<size_t, T>>& getConcentrations() const 
     { 
-        throw std::runtime_error("The function storeConcentrations is undefined for this CFD simulator.");
-        return std::unordered_map<size_t, std::unordered_map<size_t, T>>(); 
+        throw std::runtime_error("The function getConcentrations is undefined for this CFD simulator.");
+    }
+
+    /**
+     * @brief Store the abstract concentration profiles at the nodes on the module boundary in the simulator.
+     * @param[in] concentrationProfiles Map of concentration profiles and node ids.
+     */
+    virtual void storeConcentrationProfiles(std::unordered_map<size_t, std::unordered_map<size_t, std::tuple<std::function<T(T)>, std::vector<T>, T>>> concentrationProfiles) 
+    {
+        throw std::runtime_error("The function storeConcentrationProfiles is undefined for this CFD simulator.");
+    }
+
+    /**
+     * @brief Get the concentration profiles at the boundary nodes.
+     * @returns Concentrations
+     */
+    virtual const std::unordered_map<size_t, std::unordered_map<size_t, std::tuple<std::function<T(T)>, std::vector<T>, T>>>& getConcentrationProfiles() const 
+    { 
+        throw std::runtime_error("The function getConcentrationProfiles is undefined for this CFD simulator.");
     }
 
     /**
@@ -219,7 +248,7 @@ protected:
     /**
      * @brief Conducts the collide and stream operations of the AD lattice(s).
     */
-    virtual void adSolve() 
+    virtual void adSolve(size_t maxIter) 
     {
         throw std::runtime_error("The function adSolve is undefined for this CFD simulator.");
     }
@@ -373,8 +402,9 @@ public:
     friend void coupleNsAdLattices<T>(const std::unordered_map<int, std::shared_ptr<CFDSimulator<T>>>& cfdSimulators);
     friend bool conductADSimulation<T>(const std::unordered_map<int, std::shared_ptr<CFDSimulator<T>>>& cfdSimulators);
     friend class HybridContinuous<T>;
-    friend class HybridMixing<T>;
+    friend class HybridConcentration<T>;
     friend class InstantaneousMixingModel<T>;
+    friend class DiffusionMixingModel<T>;
     friend class nodal::NodalAnalysis<T>;
     friend class test::definitions::GlobalTest<T>;
 

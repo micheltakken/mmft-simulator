@@ -30,7 +30,7 @@ namespace sim {
    
 // Forward declared dependencies
 template<typename T>
-class HybridMixing;
+class HybridConcentration;
 template<typename T>
 class CfdConcentration;
 
@@ -51,7 +51,9 @@ using ADDynamics = olb::AdvectionDiffusionTRTdynamics<T,ADDESCRIPTOR>;          
 using NoADDynamics = olb::NoDynamics<T,ADDESCRIPTOR>;
 
 private:
+    bool diffusiveBC = false;
     std::unordered_map<size_t, std::unordered_map<size_t, T>> concentrations;   ///< Vector of concentration values at module nodes. <nodeId, <speciId, conc>>
+    std::unordered_map<size_t, std::unordered_map<size_t, std::tuple<std::function<T(T)>, std::vector<T>, T>>> concentrationProfiles;   ///< Vector of concentration profiles at module nodes. <nodeId, <specieId, profile>>
 
     std::unordered_map<size_t, const Specie<T>*> species;
 
@@ -69,7 +71,7 @@ private:
     std::unordered_map<size_t, T*> fluxWall;
     T zeroFlux = 0.0;
 
-    std::unordered_map<size_t, std::unordered_map<size_t, std::shared_ptr<olb::AnalyticalConst2D<T,T>>>> concentrationProfiles;
+    std::unordered_map<size_t, std::unordered_map<size_t, std::shared_ptr<olb::AnalyticalConst2D<T,T>>>> lbmConcentrationProfiles;
     std::unordered_map<size_t, std::unordered_map<size_t, std::shared_ptr<olb::SuperPlaneIntegralFluxPressure2D<T>>>> meanConcentrations;       ///< Map of mean pressure values at module nodes.
 
     [[nodiscard]] std::string getDefaultName(size_t id);
@@ -115,11 +117,33 @@ protected:
      */
     void setConcentration2D(int key);
 
+    void setConcentrationProfiles2D(int key);
+
     /**
      * @brief Update the values at the module nodes based on the simulation result after stepIter iterations.
      * @param[in] iT Iteration step.
     */
     void storeCfdResults(int iT) override;
+
+    /**
+     * @brief Store the average concentration values at the module outflow nodes.
+     * @param[in] iT Iteration step.
+     */
+    void storeConstantConcentrationCfdResults(int iT);
+
+    /**
+     * @brief Store the concentration profile values at the module outflow nodes.
+     * @param[in] iT Iteration step.
+     */
+    void storeConcentrationProfileCfdResults(int iT);
+
+    /**
+     * @brief Construct the concentration profile for a given set of concentrations.
+     * @param[in] concentrations The concentrations to use for the profile.
+     * @param[in] spectralResolution The spectral resolution to use for the profile.
+     * @return A tuple containing the profile function, the Fourier coefficients, and the zeroth coefficient.
+     */
+    std::tuple<std::function<T(T)>, std::vector<T>, T> constructProfile(std::vector<std::pair<std::array<int, 2>, T>>& concentrations, size_t spectralResolution=100);
 
     /**
      * @brief Constructor of an lbm module.
@@ -205,8 +229,24 @@ protected:
 
     /**
      * @brief Conducts the collide and stream operations of the AD lattice(s).
+     * @param[in] maxIter Maximum number of iterations for the CFD solving.
     */
-    void adSolve();
+    void adSolve(size_t maxIter);
+
+    /**
+     * @brief Initialize the simulator with the given resistance and mixing models.
+     * @param[in] resistanceModel The resistance model to use.
+     * @param[in] mixingModel The mixing model to use.
+     */
+    void initialize(const ResistanceModel<T>* resistanceModel, const MixingModel<T>* mixingModel) override;
+
+    /**
+     * @brief Construct the boundary condition profiles for a given species and lattice.
+     * @param[in] speciesId The ID of the species.
+     * @param[in] adLattice The advection-diffusion lattice.
+     * @param[in] key The key for the boundary condition.
+     */
+    void constructBCProfiles(size_t speciesId, std::shared_ptr<olb::SuperLattice<T, ADDESCRIPTOR>> adLattice, int key);
 
     /**
      * @brief Store the abstract concentrations at the nodes on the module boundary in the simulator.
@@ -218,7 +258,19 @@ protected:
      * @brief Get the concentrations at the boundary nodes.
      * @returns Concentrations
      */
-    std::unordered_map<size_t, std::unordered_map<size_t, T>> getConcentrations() const override;
+    const std::unordered_map<size_t, std::unordered_map<size_t, T>>& getConcentrations() const override;
+
+    /**
+     * @brief Store the abstract concentration profiles at the nodes on the module boundary in the simulator.
+     * @param[in] concentrationProfiles Map of concentration profiles and node ids.
+     */
+    void storeConcentrationProfiles(std::unordered_map<size_t, std::unordered_map<size_t, std::tuple<std::function<T(T)>, std::vector<T>, T>>> concentrationProfiles) override;
+
+    /**
+     * @brief Get the concentration profiles at the boundary nodes.
+     * @returns Concentrations
+     */
+    const std::unordered_map<size_t, std::unordered_map<size_t, std::tuple<std::function<T(T)>, std::vector<T>, T>>>& getConcentrationProfiles() const override;
 
     /**
      * @brief Returns whether the module has converged or not.
@@ -264,7 +316,7 @@ public:
      */
     void writeConcentrationPpm(size_t adKey, T min, T max, int imgResolution) override;
 
-    friend class HybridMixing<T>;
+    friend class HybridConcentration<T>;
     friend class CfdConcentration<T>;
 };
 
