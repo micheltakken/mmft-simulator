@@ -1,15 +1,12 @@
-#include "../src/baseSimulator.h"
-#ifdef USE_ESSLBM
-    #include <mpi.h>
-#endif
-#include "gtest/gtest.h"
-#include "../test_definitions.h"
+#include <iostream>
+
+#include <baseSimulator.h>
+#include <baseSimulator.hh>
 
 using T = double;
 
-class CfdConcentration : public test::definitions::GlobalTest<T> {};
+int main(int argc, char const* argv []) {
 
-TEST_F(CfdConcentration, Case1a) {
     // define network
     auto network = arch::Network<T>::createNetwork();
     
@@ -36,6 +33,7 @@ TEST_F(CfdConcentration, Case1a) {
 
     // define simulation
     sim::CfdConcentration<T> testSimulation(network);
+    testSimulation.setResolution(40);
 
     // fluids
     auto fluid0 = testSimulation.addFluid(1e-3, 1e3);
@@ -56,12 +54,9 @@ TEST_F(CfdConcentration, Case1a) {
     testSimulation.addConcentrationBC(node1, s1,  conc);
     testSimulation.addConcentrationBC(node2, s1,  conc);
     testSimulation.addConcentrationBC(node3, s1,  initialCondition);
-
-    testSimulation.setMaxIter(1000);
     
     // Simulate
     testSimulation.simulate();
 
-    EXPECT_NEAR(testSimulation.getAverageEnergy(), 3.06894e-08, 1e-12);
-
+    return 0;
 }

@@ -34,7 +34,7 @@ std::shared_ptr<Specie<T>> ConcentrationSemantics<T>::addSpecie(T diffusivity, T
     auto result = species.try_emplace(id, std::shared_ptr<Specie<T>>(new Specie<T>(simHash, id, diffusivity, satConc)));
 
     if (!result.second) {
-        throw std::logic_error("Specie could not be added.");
+        throw std::logic_error("Specie with id " + std::to_string(id) + " could not be added.");
     }
 
     return result.first->second;

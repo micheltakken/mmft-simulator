@@ -32,7 +32,7 @@ namespace sim {
 template<typename T>
 class HybridMixing;
 template<typename T>
-class CfdMixing;
+class CfdConcentration;
 
 /**
  * @brief Class that defines the lbm module which is the interface between the 1D solver and OLB.
@@ -45,14 +45,17 @@ using NoDynamics = olb::NoDynamics<T,DESCRIPTOR>;
 using BGKdynamics = olb::BGKdynamics<T,DESCRIPTOR>;
 using BounceBack = olb::BounceBack<T,DESCRIPTOR>;
 
-using ADDESCRIPTOR = olb::descriptors::D2Q5<olb::descriptors::VELOCITY>;
-using ADDynamics = olb::AdvectionDiffusionTRTdynamics<T,ADDESCRIPTOR>;
+using ADDESCRIPTOR = olb::descriptors::D2Q5<olb::descriptors::VELOCITY>;        
+// using ADDynamics = olb::AdvectionDiffusionBGKdynamics<T,ADDESCRIPTOR>;       ///< Optional alternative to advection diffusion dynamics
+using ADDynamics = olb::AdvectionDiffusionTRTdynamics<T,ADDESCRIPTOR>;          ///< Needs a 'magical number', set to 1/12 in initAdLattice()
 using NoADDynamics = olb::NoDynamics<T,ADDESCRIPTOR>;
 
 private:
     std::unordered_map<size_t, std::unordered_map<size_t, T>> concentrations;   ///< Vector of concentration values at module nodes. <nodeId, <speciId, conc>>
 
     std::unordered_map<size_t, const Specie<T>*> species;
+
+    std::unordered_map<size_t, T> bulkConcentrations;
 
     T adRelaxationTime;                         ///< Relaxation time (tau) for the OLB solver.
 
@@ -101,10 +104,15 @@ protected:
     void prepareCoupling();
 
     /**
-     * @brief Execute the coupling placed onto the NS lattice.
+     * @brief Maps the velocity field of the NS lattice to the AD lattices.
     */
     void executeCoupling() override;
 
+    /**
+     * @brief Defines and sets the concentration boundary conditions depending on flow direction.
+     * @note The concentration values are taken from the concentrations map. This map, which acts as a buffer, 
+     * is used by the abstract solver to set the boundary conditions for the advection-diffusion equations.
+     */
     void setConcentration2D(int key);
 
     /**
@@ -162,8 +170,11 @@ protected:
 
     /**
      * @brief Adds a specie after initialization of simulator.
+     * @param[in] id Id of the specie.
+     * @param[in] specie Pointer to the specie.
+     * @param[in] bulkConcentration Initial bulk concentration of the specie.
      */
-    bool addSpecie(size_t id, const Specie<T>* specie);
+    bool addSpecie(size_t id, const Specie<T>* specie, T bulkConcentration=0.0);
 
     /**
      * @brief Removes a specie after initialization of simulator.
@@ -171,13 +182,7 @@ protected:
     bool removeSpecie(size_t id);
 
     /**
-     * @brief Set the pressure and flow rate boundary values on the lattice at the module nodes.
-     * @param[in] iT Iteration step.
-    */
-    void setBoundaryValues(int iT) override;
-
-    /**
-     * @brief Set the concentration boundary values on the lattice at the module nodes.
+     * @brief Set the concentration boundary values on the lattice at all the module nodes.
      * @param[in] iT Iteration step.
     */
     void setConcBoundaryValues(int iT);
@@ -242,7 +247,9 @@ public:
     void setAdTau(T tau) { this->adRelaxationTime = tau; this->unsetIsInitialized(); }
 
     /**
-     * TODO:
+     * @brief Get the concentration bounds for a specific advection-diffusion key.
+     * @param[in] adKey The advection-diffusion key.
+     * @returns A tuple containing the minimum and maximum concentration values.
      */
     [[nodiscard]] std::tuple<T, T> getConcentrationBounds(size_t adKey) override;
 
@@ -253,12 +260,12 @@ public:
     void writeVTK(int iT) override;
 
     /**
-     * TODO:
+     * @brief Write the concentration values to a ppm file.
      */
     void writeConcentrationPpm(size_t adKey, T min, T max, int imgResolution) override;
 
     friend class HybridMixing<T>;
-    friend class CfdMixing<T>;
+    friend class CfdConcentration<T>;
 };
 
 }   // namespace arch
